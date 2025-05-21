@@ -82,7 +82,7 @@ class Webapp:
                     return ms
                 messages=messages+[ms]
             except zmq.Again: 
-                return json.dumps(messages)
+                return messages if TESTING else json.dumps(messages)
 
     #@app.route('/shutdown')
     # You can ignore this method.
@@ -168,6 +168,37 @@ def test_message_reorder():
     print("test_message_reorder: received =", received)
     return set(messages).issubset(set(received))
 
+#Test that simulates peer crash mid broadcast
+def test_peer_crash_mid_broadcast():
+    print("test_peer_crash_mid_broadcast: Simulating crash")
+
+    # Normal message post
+    url1 = 'http://127.0.0.1:5000/message'
+    json_data = base64.b64encode("Crash Test Msg".encode('utf-8'))
+    requests.post(url1, json_data)
+
+    #  Kill peer on port 5004 (simulate crash)
+    try:
+        print("Attempting to kill peer on port 5004...")
+        requests.get('http://127.0.0.1:5004/shutdown')
+    except Exception as e:
+        print("Peer 5004 crashed or unreachable:", e)
+
+    # Broadcast another message
+    json_data = base64.b64encode("Post-crash Msg".encode('utf-8'))
+    requests.post(url1, json_data)
+
+    # Try to fetch updates from another peer who is live
+    url2 = 'http://127.0.0.1:5002/update'
+    try:
+        result = requests.get(url2).json()
+        found = any("Post-crash Msg" in msg.get("message", "") for msg in result)
+        print("test_peer_crash_mid_broadcast: remaining peers received message =", found)
+        return found
+    except Exception as e:
+        print("Live peer failed:", e)
+        return False
+
 def tests():
     do_test_message_hello_world=True
     if do_test_message_hello_world:
@@ -181,6 +212,9 @@ def tests():
         test_clean()
 
         print(f"test_message_reorder: {test_message_reorder()}")
+        test_clean()
+
+        print(f"test_peer_crash_mid_broadcast: {test_peer_crash_mid_broadcast()}")
         test_clean()
 
 if TESTING:
