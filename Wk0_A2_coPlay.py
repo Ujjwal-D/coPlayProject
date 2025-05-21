@@ -2,7 +2,7 @@
 # Allows to you to chat while playing a game.
 # Instantiates 2 webapps.
 
-TESTING=False # manual tests
+TESTING=True # automatic tests
 
 from flask import Flask, request
 import threading, time, zmq, base64, os, signal, json, requests, logging, random
@@ -131,10 +131,56 @@ def test_message_hello_world():
     last_chat=requests.get(url1).json().pop()['message']
     return last_chat=="Hello world"
 
+# Test that simulates lag by introducing delay in receiving update
+def test_simulated_lag():
+    global TESTING_DELAY
+    TESTING_DELAY = 1.5  # 1.5 second processing delay
+
+    print("test_simulated_lag: sending delayed message...")
+    url1 = 'http://127.0.0.1:5000/message'
+    json_data = base64.b64encode("Delayed message".encode('utf-8'))
+    requests.post(url1, json_data)
+
+    # Try to fetch with delay and check result
+    url2 = 'http://127.0.0.1:5002/update'
+    start_time = time.time()
+    response = requests.get(url2).json()
+    end_time = time.time()
+
+    TESTING_DELAY = 0  # Reset processing delay
+    success = any("Delayed message" in msg.get("message", "") for msg in response)
+    print(f"test_simulated_lag: duration={end_time-start_time:.2f}s, success={success}")
+    return success
+
+
+# Test that simulates message reorder by sending multiple messages
+def test_message_reorder():
+    messages = ["First", "Second", "Third"]
+    for msg in messages:
+        url = 'http://127.0.0.1:5000/message'
+        json_data = base64.b64encode(msg.encode('utf-8'))
+        requests.post(url, json_data)
+        time.sleep(0.1)
+
+    url = 'http://127.0.0.1:5002/update'
+    response = requests.get(url).json()
+    received = [msg.get("message") for msg in response if "message" in msg]
+    print("test_message_reorder: received =", received)
+    return set(messages).issubset(set(received))
+
 def tests():
     do_test_message_hello_world=True
     if do_test_message_hello_world:
         print(f"test_message_hello_world: {test_message_hello_world()}")
+        test_clean()
+
+        print(f"test_message_hello_world: {test_message_hello_world()}")
+        test_clean()
+
+        print(f"test_simulated_lag: {test_simulated_lag()}")
+        test_clean()
+
+        print(f"test_message_reorder: {test_message_reorder()}")
         test_clean()
 
 if TESTING:
