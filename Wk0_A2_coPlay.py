@@ -2,7 +2,7 @@
 # Allows to you to chat while playing a game.
 # Instantiates 2 webapps.
 
-TESTING=True # automatic tests
+TESTING=False # automatic tests
 
 from flask import Flask, request
 import threading, time, zmq, base64, os, signal, json, requests, logging, random
