@@ -69,17 +69,49 @@ header,h1,h2{
     margin: 10px 0 -10px 0;
     box-shadow:0 5px rgba(0, 0, 0, 0.5);
 }
+.tower:hover {
+  border: 2px solid yellow;
+}
 
-    #chat {
-      width: 100%;
-      height: 120px;
-      border: 1px solid #ccc;
-      background: #fff;
-      color: black;
-      padding: 5px;
-      overflow-y: scroll;
-      white-space: pre-line;
-    }
+#chat {
+  width: 80%;
+  height: 70px;
+  border: 1px solid #ccc;
+  background: rgba(255, 255, 255, 0.1); /* Semi-transparent */
+  color: rgba(255, 255, 255, 0.7); /* Dim text */
+  padding: 5px;
+  overflow-y: scroll;
+  white-space: pre-line;
+  margin-bottom: 10px;
+
+  opacity: 0;
+  transition: opacity 1s ease;
+  visibility: hidden;
+}
+
+#pingStatus {
+  font-size: 12px;
+  font-style: italic;
+  color: lightgreen;
+  margin-bottom: 10px;
+  text-align: right;
+}
+@media (max-width: 768px) {
+  .board {
+    flex-direction: column;
+    left: 0;
+    height: auto;
+  }
+  .tower {
+    margin-bottom: 20px;
+  }
+  .tracker {
+    flex-direction: column;
+    width: 100%;
+    align-items: center;
+  }
+}
+
 #counter, #minimum, .numdisks {
     font-family: 'Roboto Mono', monospace;
     text-shadow: 2px 2px rgb(114, 113, 113);
@@ -188,62 +220,100 @@ footer{
 
 </style>
 
-  <script>
-    function postMessage() {
-      const msgBox = document.getElementById("chatInput");
-      const msg = msgBox.value.trim();
-      if (!msg) {
-        alert("Message cannot be empty");
-        return;
-      }
-      fetch('/message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/text' },
-        body: btoa(msg)
-      })
-      .then(response => response.text())
-      .then(data => console.log("Message sent:", data))
-      .catch(err => console.error("Error sending message:", err));
+<script>
+  let lastUpdateTime = Date.now();
 
-      msgBox.value = "";
+  function updatePingDisplay() {
+    const secondsAgo = Math.floor((Date.now() - lastUpdateTime) / 1000);
+    document.getElementById('pingStatus').innerText = `Last update: ${secondsAgo}s ago`;
+  }
+
+  function postMessage() {
+    const msgBox = document.getElementById("chatInput");
+    const msg = msgBox.value.trim();
+    if (!msg) {
+      alert("Message cannot be empty");
+      return;
     }
+    fetch('/message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/text' },
+      body: btoa(msg)
+    })
+    .then(response => response.text())
+    .then(data => console.log("Message sent:", data))
+    .catch(err => console.error("Error sending message:", err));
 
-    document.addEventListener('DOMContentLoaded', () => {
-      document.getElementById("chatInput").addEventListener("keydown", function(e) {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          postMessage();
-        }
-      });
+    msgBox.value = "";
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById("chatInput").addEventListener("keydown", function (e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        postMessage();
+      }
     });
+    setInterval(updatePingDisplay, 1000);
+  });
 
-    setInterval(function () {
-      fetch('/update', { method: 'GET' })
-        .then(response => response.json())
-        .then(messages => {
-          const chat = document.getElementById('chat');
-          for (const data of messages) {
-            if ('message' in data) {
-              chat.innerText += data['message'] + "\n";
-              chat.scrollTop = chat.scrollHeight;
-            } else if ('tower' in data) {
-              const tower = JSON.parse(data['tower']);
-              if (tower == 1) actions(tower1);
-              else if (tower == 2) actions(tower2);
-              else if (tower == 3) actions(tower3);
-            }
-          }
-        })
-        .catch(err => console.error("Polling error:", err));
-    }, 100);
-  </script>
+let chatHistory = ""; // Store chat history locally
+
+setInterval(function () {
+  fetch('/update', { method: 'GET' })
+    .then(response => response.json())
+    .then(messages => {
+      lastUpdateTime = Date.now();
+      const chat = document.getElementById('chat');
+      let newMessageAdded = false;
+
+      for (const data of messages) {
+        if ('message' in data) {
+          const msg = data['message'];
+          
+            chatHistory += msg + "\n";
+            newMessageAdded = true;
+          
+        } else if ('tower' in data) {
+          const tower = JSON.parse(data['tower']);
+          if (tower == 1) actions(tower1);
+          else if (tower == 2) actions(tower2);
+          else if (tower == 3) actions(tower3);
+        }
+      }
+
+      chat.innerText = chatHistory; // Always restore full chat
+      chat.scrollTop = chat.scrollHeight;
+
+if (newMessageAdded) {
+  chat.innerText = chatHistory; // Restore full chat
+  chat.scrollTop = chat.scrollHeight;
+
+  chat.style.opacity = 1;
+  chat.style.visibility = 'visible';
+
+  // Always reset the fade-out timer
+  clearTimeout(window.chatTimeout);
+  window.chatTimeout = setTimeout(() => {
+    chat.style.opacity = 0;
+    chat.style.visibility = 'hidden';
+  }, 4000);
+}
+      updatePingDisplay();
+    })
+    .catch(err => console.error("Polling error:", err));
+}, 100);
+</script>
+
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.0/jquery-ui.js"></script>
+</head>
+<body>
     <h1>Chat</h1>
     <div id="chat"></div>
     <input type="text" id="chatInput" placeholder="Type here"></input>
     <button onclick="postMessage()">Post</button>
-    </script>
-</head>
-<body>
+    <div id="pingStatus">Last update: 0s ago</div>
     <h1>WebApp</h1>
     <script>
         function serializeMouseEvent(event) {
