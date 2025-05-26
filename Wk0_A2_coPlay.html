@@ -69,6 +69,17 @@ header,h1,h2{
     margin: 10px 0 -10px 0;
     box-shadow:0 5px rgba(0, 0, 0, 0.5);
 }
+
+    #chat {
+      width: 100%;
+      height: 120px;
+      border: 1px solid #ccc;
+      background: #fff;
+      color: black;
+      padding: 5px;
+      overflow-y: scroll;
+      white-space: pre-line;
+    }
 #counter, #minimum, .numdisks {
     font-family: 'Roboto Mono', monospace;
     text-shadow: 2px 2px rgb(114, 113, 113);
@@ -177,43 +188,59 @@ footer{
 
 </style>
 
-        <script>
-        setInterval(function() {
-            fetch('/update', 
-            {method: 'GET'})
-            .then(response => response.json())
-            .then(messages => {
-                for (const data of messages) {
-                    if ('message' in data) {
-                        const chat = document.getElementById('chat');
-                        chat.innerText=data['message'];
-                    } else if ('tower' in data) {
-                        tower=JSON.parse(data['tower'])
-                        if (tower==1) {
-                            actions(tower1)
-                        } else if (tower==2) {
-                            actions(tower2)
-                        } else if (tower==3) {
-                            actions(tower3)
-                        } else if ('noupdate' in data) {
-                            noMessages=true
-                        }
-                    }
-                }
-            });
-        },100)
-    </script>
-    <h1>Chat</h1>
-    <div id="chat">Chat</div>
-    <input type="text" id="chatInput" placeholder="Type here"></input>
-    <button onclick="
-       fetch('/message', 
-                          {method: 'POST',
-                           headers: {'Content-Type': 'application/text'},
-                           body:btoa(document.getElementById('chatInput').value)
-                          })
-     ">Post</button>
+  <script>
+    function postMessage() {
+      const msgBox = document.getElementById("chatInput");
+      const msg = msgBox.value.trim();
+      if (!msg) {
+        alert("Message cannot be empty");
+        return;
+      }
+      fetch('/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/text' },
+        body: btoa(msg)
+      })
+      .then(response => response.text())
+      .then(data => console.log("Message sent:", data))
+      .catch(err => console.error("Error sending message:", err));
 
+      msgBox.value = "";
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById("chatInput").addEventListener("keydown", function(e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          postMessage();
+        }
+      });
+    });
+
+    setInterval(function () {
+      fetch('/update', { method: 'GET' })
+        .then(response => response.json())
+        .then(messages => {
+          const chat = document.getElementById('chat');
+          for (const data of messages) {
+            if ('message' in data) {
+              chat.innerText += data['message'] + "\n";
+              chat.scrollTop = chat.scrollHeight;
+            } else if ('tower' in data) {
+              const tower = JSON.parse(data['tower']);
+              if (tower == 1) actions(tower1);
+              else if (tower == 2) actions(tower2);
+              else if (tower == 3) actions(tower3);
+            }
+          }
+        })
+        .catch(err => console.error("Polling error:", err));
+    }, 100);
+  </script>
+    <h1>Chat</h1>
+    <div id="chat"></div>
+    <input type="text" id="chatInput" placeholder="Type here"></input>
+    <button onclick="postMessage()">Post</button>
     </script>
 </head>
 <body>
