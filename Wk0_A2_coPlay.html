@@ -269,18 +269,42 @@ setInterval(function () {
 
       for (const data of messages) {
         if ('message' in data) {
-          const msg = data['message'];
-          
+            const msg = data['message'];
             chatHistory += msg + "\n";
             newMessageAdded = true;
-          
         } else if ('tower' in data) {
-          const tower = JSON.parse(data['tower']);
-          if (tower == 1) actions(tower1);
-          else if (tower == 2) actions(tower2);
-          else if (tower == 3) actions(tower3);
+            const tower = JSON.parse(data['tower']);
+            if (tower == 1) actions(tower1);
+            else if (tower == 2) actions(tower2);
+            else if (tower == 3) actions(tower3);
+        }
+
+        // UPDATED CODE. Show modal when reset request received
+        if ('reset_request' in data) {
+            if(window.isResetRequester){
+                // Show waiting message for requester
+                document.getElementById('waiting-reset-modal').style.display = 'block';
+            } else {
+                // Show OK modal to other peers
+                document.getElementById('reset-modal').style.display = 'block';
+            }
+        }
+
+        // UPDATED CODE
+        if ('reset_vote' in data) {
+            // When any peer votes, hide waiting modal on requester peer
+            if (window.isResetRequester) {
+                document.getElementById('waiting-reset-modal').style.display = 'none';
+            }
+        }
+
+        // UPDATED CODE. Trigger reset when broadcasted
+        if ('reset' in data) {
+            window.isResetRequester = false; // Clear requester flag on reset
+            newGame();  // reset triggered for all peers
         }
       }
+
 
       chat.innerText = chatHistory; // Always restore full chat
       chat.scrollTop = chat.scrollHeight;
@@ -385,7 +409,7 @@ if (newMessageAdded) {
             </div>
         </div>
     <!-- reset button -->
-    <button class="reset" onclick="newGame()">Reset</button>
+    <button class="reset" onclick="sendResetRequest()">Reset</button>
     <h2>How to Play</h2>
     <div class="rules">
         <!-- Rules to be listed under the game board -->
@@ -397,6 +421,25 @@ if (newMessageAdded) {
         </ul>
     </div>
     
+    <!-- UPDATED CODE -->
+     <!-- Modal for reset requesting peer -->
+    <div id="waiting-reset-modal" style="display:none; background-color: rgba(0,0,0,0.5); position:fixed; top:0; left:0; width:100%; height:100%; z-index:2;">
+        <div style="background:#0B3303; width: 300px; margin: 200px auto; padding: 20px; border-radius: 15px; text-align: center; color: white; border: 3px solid white;">
+            <p>Reset requested. Waiting for other peers to confirm...</p>
+        </div>
+    </div>
+
+
+    <!-- UPDATED CODE -->
+     <!-- Modal for other peers to accept reset request -->
+    <div id="reset-modal" style="display:none; background-color: rgba(0,0,0,0.5); position:fixed; top:0; left:0; width:100%; height:100%; z-index:2;">
+        <div style="background:#0B3303; width: 300px; margin: 200px auto; padding: 20px; border-radius: 15px; text-align: center; color: white; border: 3px solid white;">
+            <p>A peer has requested to reset the game.</p>
+            <button onclick="acceptReset()" style="padding: 5px 15px;">OK</button>
+        </div>
+    </div>
+
+
     <footer>
         <!-- A footer for links and signature -->
         <h5>Created by Dave Schuetz 2018</h5>
@@ -474,6 +517,26 @@ function intercept_actions(tower) {
         //actions(tower3)
     }
 
+// UPDATED CODE
+function sendResetRequest() {
+    window.isResetRequester = true;
+    fetch('/tower?tower=reset_request', { method: 'GET' });
+}
+
+// UPDATED CODE
+function isRequesterPeer() {
+    // Logic to identify if this peer is the requester
+    // For prototype, simplest: store requester ID via backend or use IP check
+    return window.isResetRequester === true;
+}
+
+
+// UPDATED CODE
+function acceptReset() {
+    fetch('/tower?tower=reset_vote', { method: 'GET' });
+    document.getElementById('reset-modal').style.display = 'none';
+}
+
 
 
 //The listeners are on the parents
@@ -501,6 +564,13 @@ function newGame(){
     active = false
     counter = 0
     document.getElementById('counter').textContent = counter
+
+    // UPDATED CODE. Hide congratulations message if shown
+    const congratsElem = document.getElementById('modal-textbox');
+    if (congratsElem) {
+        congratsElem.style.display = 'none';
+    }    
+    
     build()
 
     tower3.addEventListener('click', intercept_actions3)
