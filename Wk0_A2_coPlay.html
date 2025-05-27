@@ -247,13 +247,27 @@ footer{
     msgBox.value = "";
   }
 
+  
   document.addEventListener('DOMContentLoaded', () => {
+
+    // UPDATED CODE.
+    const diskDrop = document.getElementById('drop');
+    diskSelector = parseInt(diskDrop.value);  // Initialize diskSelector from dropdown
+    build();  // Build game after setting diskSelector
+
     document.getElementById("chatInput").addEventListener("keydown", function (e) {
       if (e.key === "Enter") {
         e.preventDefault();
         postMessage();
       }
     });
+
+    // UPDATED CODE. Disk selector listener 
+    document.getElementById('drop').addEventListener('change', function() {
+        const newDiskCount = this.value;
+        fetch(`/disk?count=${newDiskCount}`, { method: 'GET' });
+    });
+
     setInterval(updatePingDisplay, 1000);
   });
 
@@ -277,6 +291,15 @@ setInterval(function () {
             if (tower == 1) actions(tower1);
             else if (tower == 2) actions(tower2);
             else if (tower == 3) actions(tower3);
+        }
+
+        // UPDATED CODE.
+        if ('disk_number' in data) {
+            diskSelector = parseInt(data['disk_number']);
+            //Update dropdown UI
+            const diskDrop = document.getElementById('drop')
+            diskDrop.value = diskSelector.toString();
+            newGame(); // reset the game with the updated disk count
         }
 
         // UPDATED CODE. Show modal when reset request received
@@ -371,7 +394,8 @@ if (newMessageAdded) {
     <!--/header-->
     <div class="tracker">
         <p>Choose Disks</br>
-            <select id = "drop" class = "numDisks" onchange="newGame()">
+            <!-- UPDATED CODE. For onchange -->
+            <select id = "drop" class = "numDisks" onchange="handleDiskChange()"> 
             <option id ="d3" selected>3</option>
             <option id ="d4">4</option>
             <option id ="d5">5</option>
@@ -463,8 +487,9 @@ let active = false
 
 //Creating using DOM elements
 function build(){
-    const diskDrop = document.getElementById('drop')
-    diskSelector = diskDrop.options[diskDrop.selectedIndex].value
+    // UPDATED CODE
+    // Removed the dropdown overwrite and placed in setInterval(). 
+    // build() called inside DOM 
     for (i = 1; i <= diskSelector; i++){
         // for loop to build the disks
         let diskDiv = document.createElement('div')
@@ -473,7 +498,7 @@ function build(){
         tower1.appendChild(diskDiv)}
     minMoves = 2 ** diskSelector - 1
     document.getElementById('minimum').textContent = minMoves
-    }build()
+    }
 
 //let actions = function(){
     let actions = function(ths){    
@@ -516,6 +541,14 @@ function intercept_actions(tower) {
         console.log("tower3")
         //actions(tower3)
     }
+
+// UPDATED CODE. Handles changes in no. of disks
+function handleDiskChange() {
+    const diskDrop = document.getElementById('drop');
+    const newDiskCount = diskDrop.options[diskDrop.selectedIndex].value;
+    fetch(`/disk?count=${newDiskCount}`, { method: 'GET' });
+}
+
 
 // UPDATED CODE
 function sendResetRequest() {
@@ -573,7 +606,10 @@ function newGame(){
     
     build()
 
-    tower3.addEventListener('click', intercept_actions3)
+    // UPDATED CODE
+    tower3.addEventListener('click', intercept_actions3);
+    tower2.addEventListener('click', intercept_actions2);
+    tower1.addEventListener('click', intercept_actions1);
 }
 </script>
 
