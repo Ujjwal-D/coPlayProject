@@ -18,6 +18,7 @@ class Webapp:
         app = Flask("webapp")
         app.add_url_rule("/","get_home",self.home,methods=['GET'])
         app.add_url_rule("/update","get_update",self.updates_get,methods=['GET'])
+        app.add_url_rule("/disk", "get_disk", self.disk_get, methods=['GET'])  # UPDATED CODE. Disk count 
         app.add_url_rule("/tower","get_tower",self.tower_get,methods=['GET'])
         app.add_url_rule("/message","post_message",self.message_post,methods=['POST'])
         app.add_url_rule("/shutdown","get_shutdown",self.shutdown,methods=['GET'])
@@ -57,6 +58,15 @@ class Webapp:
         decoded_bytes = base64.b64decode(text)
         text = decoded_bytes.decode('utf-8')
         self.broadcast({"message":text})
+        return "ok"
+    
+    # UPDATED CODE.
+    # #@app.route('/disk', methods=["GET"])
+    # Called when a user changes the number of disks.
+    # Broadcasts the new disk count to all peers for synchronization. 
+    def disk_get(self):
+        disk_count = int(request.args['count'])
+        self.broadcast({"disk_number": disk_count})
         return "ok"
 
     #@app.route('/tower',methods=["GET"])
