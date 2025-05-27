@@ -3,6 +3,8 @@
 # Instantiates 2 webapps.
 
 TESTING=False # automatic tests
+reset_triggered = False #Global flag to lock reset
+reset_requester_id = None #Track reset requesting peer
 
 from flask import Flask, request
 import threading, time, zmq, base64, os, signal, json, requests, logging, random
@@ -59,17 +61,39 @@ class Webapp:
 
     #@app.route('/tower',methods=["GET"])
     # Called when a user clicks on a tower.
-    # Broadcasts tower message to all webapps.
+    # Broadcasts tower message to all webapps. 
+    # UPDATED CODE
     def tower_get(self):
-        tower=request.args['tower']
-        self.broadcast({"tower":tower})
-        return "ok"
+        global reset_triggered, reset_requester_id
+
+        tower = request.args['tower']
+        requester = request.remote_addr # or any unique identifier
+
+        if tower == "reset_request":
+            reset_requester_id = requester # save the requester
+            self.broadcast({"reset_request": True})
+            return "ok"
+
+        elif tower == "reset_vote":
+            global reset_triggered
+            if not reset_triggered:
+                reset_triggered = True
+                self.broadcast({"reset_vote":True})
+                threading.Timer(1.0, self.delayed_reset).start() # 3 seconds wait time for peer sending reset request
+            return "ok"
+
+        else:
+            self.broadcast({"tower": tower})
+            return "ok"
+
 
     #@app.route('/update') #,methods=["GET"])
     # Called periodically by the polling browser.
     # Pulls all queued messages and them to browser for processing.
     def updates_get(self):
-        messages=[]
+        global reset_triggered
+        messages = []
+
         while True:
             try:
                 ms = self.pull_socket.recv_json(zmq.NOBLOCK)
@@ -77,12 +101,27 @@ class Webapp:
                     print(ms)
                 else:
                     time.sleep(TESTING_DELAY)
+
                 if "shutdown" in ms:
-                    threading.Timer(1.0,self.do_shutdown).start()
-                    return ms
-                messages=messages+[ms]
-            except zmq.Again: 
+                    threading.Timer(1.0, self.do_shutdown).start()
+                    reset_triggered = False
+                    messages.append(ms)
+                    return messages if TESTING else json.dumps(messages)
+
+                if "reset" in ms:
+                    reset_triggered = False
+
+                messages.append(ms)
+
+            except zmq.Again:
                 return messages if TESTING else json.dumps(messages)
+    
+    # UPDATED CODE
+    def delayed_reset(self):
+        print("Timer expired, broadcasting reset")
+        self.broadcast({"reset": True})
+
+
 
     #@app.route('/shutdown')
     # You can ignore this method.
