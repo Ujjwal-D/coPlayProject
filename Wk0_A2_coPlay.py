@@ -13,12 +13,22 @@ class Webapp:
     # Creates listening ZMQ pull socket on zmq_port.
     # Creates sending ZMQ push sockets for each of webapp_ports.
     def __init__(self,browser_port,zmq_port,webapp_ports):
+        self.browser_port = browser_port
         app = Flask("webapp")
         app.add_url_rule("/","get_home",self.home,methods=['GET'])
         app.add_url_rule("/update","get_update",self.updates_get,methods=['GET'])
         app.add_url_rule("/tower","get_tower",self.tower_get,methods=['GET'])
         app.add_url_rule("/message","post_message",self.message_post,methods=['POST'])
         app.add_url_rule("/shutdown","get_shutdown",self.shutdown,methods=['GET'])
+        # NEW ROUTE: /reset_request ──
+        app.add_url_rule("/reset_request", "get_reset_request", self.reset_request, methods=['GET'])  # ← NEW
+
+        # NEW ROUTE: /reset_confirm ──
+        app.add_url_rule("/reset_confirm", "get_reset_confirm", self.reset_confirm, methods=['GET'])  # ← NEW
+
+        # NEW ROUTE /reset_decline ──
+        app.add_url_rule("/reset_decline", "get_reset_decline", self.reset_decline, methods=['GET'])  # ← NEW
+        
         context = zmq.Context()
         self.pull_socket = context.socket(zmq.PULL)
         self.pull_socket.bind(f"tcp://127.0.0.1:{zmq_port}")
@@ -37,6 +47,27 @@ class Webapp:
         with open('Wk0_A2_coPlay.html', 'r', encoding="utf-8") as file:
             content = file.read()
             return content
+
+    # NEW METHOD: reset_request
+    # When a client clicks “Reset”, it should hit /reset_request.
+    # We broadcast a “reset_request” event, along with our own port as the origin.
+    def reset_request(self):
+        # Broadcast to all peers: { "reset_request": true, "origin": <my port> }
+        self.broadcast({"reset_request": True, "origin": self.browser_port})
+        return "ok"
+
+    # NEW METHOD: reset_confirm
+    # When a peer approves, it hits /reset_confirm, which broadcasts { "reset": true }
+    def reset_confirm(self):
+        self.broadcast({"reset": True})
+        return "ok"
+
+    # NEW METHOD: reset_decline
+    # If a peer declines, it hits /reset_decline. We can broadcast a “decline” if you want
+    def reset_decline(self):
+        self.broadcast({"reset_decline": True, "origin": self.browser_port})
+        return "ok"
+
 
     # Sends a JSON message to all webapps, including itself.
     def broadcast(self, jsn): # {"message":solution_messages}
