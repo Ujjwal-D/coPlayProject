@@ -1,15 +1,13 @@
 # coPlay_zookeeper.py
-# Zookeeper-based version of coPlay, ready after Issue 1
+# Zookeeper-based coPlay with chat message sync (Issue 2)
 
 from flask import Flask, request
 import threading, base64, json, os, signal, logging
 from kazoo.client import KazooClient
 
-# Enable logging
 logging.basicConfig(level=logging.INFO)
 logging.getLogger('werkzeug').disabled = True
 
-# Connect to Zookeeper
 print("Connecting to Zookeeper at 127.0.0.1:2181...")
 zk = KazooClient(hosts='127.0.0.1:2181')
 zk.start(timeout=10)
@@ -19,7 +17,7 @@ class Webapp:
     def __init__(self, browser_port, peer_id):
         self.peer_id = peer_id
         self.browser_port = browser_port
-        self.queue = []
+        self.last_seen_index = -1  # Track last message index seen
 
         app = Flask("webapp")
         app.add_url_rule("/", "get_home", self.home, methods=["GET"])
@@ -33,7 +31,6 @@ class Webapp:
         app.run(port=browser_port)
 
     def setup_zookeeper_paths(self):
-        """Create required znodes only if they don't already exist."""
         paths = ["/coplay", "/coplay/messages", "/coplay/towers"]
         for path in paths:
             if not zk.exists(path):
@@ -44,20 +41,38 @@ class Webapp:
             return file.read()
 
     def message_post(self):
-        # <chat message sync> addition required
+        # Decode base64 message
+        text = base64.b64decode(request.data).decode('utf-8')
+        logging.info(f"Received chat message: {text}")
+
+        # Create a sequential znode with message JSON
+        message_data = json.dumps({"message": text}).encode('utf-8')
+        zk.create("/coplay/messages/msg-", value=message_data, sequence=True)
         return "ok"
 
     def tower_get(self):
-        # <tower click sync> addition required
+        # <tower click sync> addition required (Issue 3)
         return "ok"
 
     def disk_get(self):
-        # <disk sync already complete> - no changes required
+        # disk sync complete from Issue 1
         return "ok"
 
     def updates_get(self):
-        # <message/tower delivery> addition required
-        return json.dumps([])
+        # Get all new messages after last_seen_index
+        children = zk.get_children("/coplay/messages")
+        children.sort()  # lex order ensures seq order: msg-00000001, msg-00000002, etc.
+
+        new_messages = []
+        for child in children:
+            index = int(child.split("-")[1])
+            if index > self.last_seen_index:
+                data, _ = zk.get(f"/coplay/messages/{child}")
+                msg_json = json.loads(data.decode('utf-8'))
+                new_messages.append(msg_json)
+                self.last_seen_index = index
+
+        return json.dumps(new_messages)
 
     def shutdown(self):
         return "<a href='/'>Home</a>"
