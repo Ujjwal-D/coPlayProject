@@ -1,15 +1,19 @@
 # coPlay_zookeeper.py
-# Rebuild of coPlay using Zookeeper (Kazoo) instead of ZMQ
+# Zookeeper-based version of coPlay, ready after Issue 1
 
 from flask import Flask, request
-import threading, time, base64, os, signal, json, logging
+import threading, base64, json, os, signal, logging
 from kazoo.client import KazooClient
-from kazoo.exceptions import NoNodeError
 
+# Enable logging
+logging.basicConfig(level=logging.INFO)
 logging.getLogger('werkzeug').disabled = True
 
+# Connect to Zookeeper
+print("Connecting to Zookeeper at 127.0.0.1:2181...")
 zk = KazooClient(hosts='127.0.0.1:2181')
-zk.start()
+zk.start(timeout=10)
+print("Connected to Zookeeper.")
 
 class Webapp:
     def __init__(self, browser_port, peer_id):
@@ -17,25 +21,23 @@ class Webapp:
         self.browser_port = browser_port
         self.queue = []
 
-        # Flask app setup
         app = Flask("webapp")
-        app.add_url_rule("/", "get_home", self.home, methods=['GET'])
-        app.add_url_rule("/update", "get_update", self.updates_get, methods=['GET'])
-        app.add_url_rule("/disk", "get_disk", self.disk_get, methods=['GET'])  # Disks already synced
-        app.add_url_rule("/tower", "get_tower", self.tower_get, methods=['GET'])
-        app.add_url_rule("/message", "post_message", self.message_post, methods=['POST'])
-        app.add_url_rule("/shutdown", "get_shutdown", self.shutdown, methods=['GET'])
+        app.add_url_rule("/", "get_home", self.home, methods=["GET"])
+        app.add_url_rule("/update", "get_update", self.updates_get, methods=["GET"])
+        app.add_url_rule("/disk", "get_disk", self.disk_get, methods=["GET"])
+        app.add_url_rule("/tower", "get_tower", self.tower_get, methods=["GET"])
+        app.add_url_rule("/message", "post_message", self.message_post, methods=["POST"])
+        app.add_url_rule("/shutdown", "get_shutdown", self.shutdown, methods=["GET"])
 
         self.setup_zookeeper_paths()
         app.run(port=browser_port)
 
     def setup_zookeeper_paths(self):
-        paths = ["/coplay/messages", "/coplay/towers"]
+        """Create required znodes only if they don't already exist."""
+        paths = ["/coplay", "/coplay/messages", "/coplay/towers"]
         for path in paths:
-            try:
+            if not zk.exists(path):
                 zk.create(path, b"", makepath=True)
-            except:
-                pass
 
     def home(self):
         with open('Wk0_A2_coPlay.html', 'r', encoding="utf-8") as file:
