@@ -27,6 +27,7 @@
 |---------------|------------------------|
 | Backend       | Python + Flask         |
 | Networking    | ZeroMQ (ZMQ)           |
+|               | Zookeeper              |
 | Frontend      | HTML5 + JavaScript     |
 | Styling       | CSS                    |
 | Communication | ZMQ Push/Pull Sockets  |
@@ -51,8 +52,6 @@ This project uses Apache Zookeeper to synchronize chat messages and game actions
     Go to https://zookeeper.apache.org/releases.html
 
     Download the latest stable binary release (e.g., apache-zookeeper-3.8.4-bin.tar.gz or .zip)
-
-    Extract the downloaded archive to a location outside the project folder (e.g., C:/zookeeper/ or ~/zookeeper/)
 
 ## Step 2: Start Zookeeper Server
 
