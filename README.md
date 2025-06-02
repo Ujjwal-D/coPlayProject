@@ -27,6 +27,7 @@
 |---------------|------------------------|
 | Backend       | Python + Flask         |
 | Networking    | ZeroMQ (ZMQ)           |
+|               | Zookeeper              |
 | Frontend      | HTML5 + JavaScript     |
 | Styling       | CSS                    |
 | Communication | ZMQ Push/Pull Sockets  |
@@ -39,6 +40,38 @@
 ###  Requirements
 - Python 3.8+
 - pip packages: `flask`, `pyzmq`, `requests`
+- Terminal:
+pip install -r requirements.txt
 
-Terminal:
-pip install flask pyzmq requests
+### Zookeeper Setup
+
+This project uses Apache Zookeeper to synchronize chat messages and game actions between peers. You must start a Zookeeper server before running coPlay_zookeeper.py.
+
+## Step 1: Download Zookeeper
+
+    Go to https://zookeeper.apache.org/releases.html
+
+    Download the latest stable binary release (e.g., apache-zookeeper-3.8.4-bin.tar.gz or .zip)
+
+## Step 2: Start Zookeeper Server
+
+For Windows:
+
+cd C:\zookeeper\apache-zookeeper-3.x.x-bin\bin
+zkServer.cmd
+
+For macOS or Linux:
+
+cd ~/zookeeper/apache-zookeeper-3.x.x-bin/bin
+./zkServer.sh start
+
+If Zookeeper starts successfully, it will bind to port 2181.
+
+## Step 3: Run the Application
+
+Open a new terminal window and run:
+
+python coPlay_zookeeper.py
+
+Make sure Zookeeper is running and listening on 127.0.0.1:2181. The application will connect automatically.
+
