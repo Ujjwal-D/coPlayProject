@@ -1,35 +1,37 @@
 # coPlay_zookeeper.py
+
+# Import necessary modules
 from flask import Flask, request
 import threading, base64, json, os, signal, logging, time
 from kazoo.client import KazooClient
 from kazoo.recipe.watchers import ChildrenWatch, DataWatch
 import requests
 
-# Configure logging
+# Enable simple logging
 logging.basicConfig(level=logging.INFO)
 logging.getLogger('werkzeug').disabled = True
 
-# Enable or disable testing
+# Toggle this to True for testing via console instead of browser
 TESTING = True
 
-# List of ports used by all peers
+# List of ports for peer nodes
 PORTS = [5000, 5002, 5004]
 BASE_URLS = [f"http://localhost:{port}" for port in PORTS]
 
-# Zookeeper node paths
+# Zookeeper paths for storing game data
 DISK_PATH = "/coplay/disk"
 TOWER_PATH = "/coplay/towers"
 MESSAGE_PATH = "/coplay/messages"
 
-# Shared state for reset
+# Global flags for reset functionality
 reset_triggered = False
 reset_requester_id = None
 
-# Connect to local Zookeeper
+# Connect to local Zookeeper server
 zk = KazooClient(hosts='127.0.0.1:2181')
 zk.start(timeout=10)
 
-# Clear old state in Zookeeper
+# Clear previous game state and initialize with default disk count
 def reset_zookeeper_state():
     for path in [MESSAGE_PATH, TOWER_PATH]:
         if zk.exists(path):
@@ -40,6 +42,7 @@ def reset_zookeeper_state():
     else:
         zk.create(DISK_PATH, b"3", makepath=True)
 
+# WebApp represents one peer (a single browser tab in real scenario)
 class WebApp:
     def __init__(self, port, peer_id):
         self.port = port
@@ -49,12 +52,14 @@ class WebApp:
         self.updates = []
         self.update_lock = threading.Lock()
 
+        # Reset state only once for the first peer
         if peer_id == "peer1":
             reset_zookeeper_state()
 
         self.setup_paths()
         self.setup_watchers()
 
+        # Setup Flask routes
         app = Flask(__name__)
         app.add_url_rule("/", "home", self.home, methods=["GET"])
         app.add_url_rule("/update", "update", self.update, methods=["GET"])
@@ -64,19 +69,19 @@ class WebApp:
         app.add_url_rule("/shutdown", "shutdown", self.shutdown, methods=["GET"])
         app.run(port=port)
 
-    # Ensure all required zNodes exist
+    # Create required paths in Zookeeper if they don’t exist
     def setup_paths(self):
         for path in ["/coplay", MESSAGE_PATH, TOWER_PATH, DISK_PATH]:
             if not zk.exists(path):
                 zk.create(path, b"", makepath=True)
 
-    # Set up watchers for real-time update notifications
+    # Attach watchers for message, tower, and disk updates
     def setup_watchers(self):
         ChildrenWatch(zk, MESSAGE_PATH, self.message_watcher)
         ChildrenWatch(zk, TOWER_PATH, self.tower_watcher)
         DataWatch(zk, DISK_PATH, self.disk_watcher)
 
-    # Watcher callback for messages
+    # Callback to track new chat messages
     def message_watcher(self, children):
         children.sort()
         for child in children:
@@ -88,7 +93,7 @@ class WebApp:
                     self.updates.append(msg)
                 self.last_seen_msg = idx
 
-    # Watcher callback for tower events (including reset)
+    # Callback to track tower actions
     def tower_watcher(self, children):
         children.sort()
         for child in children:
@@ -102,7 +107,7 @@ class WebApp:
                     self.updates.append(tower_event)
                 self.last_seen_tower = idx
 
-    # Watcher callback for disk selector changes
+    # Callback to track disk number updates
     def disk_watcher(self, data, stat):
         if data:
             try:
@@ -113,18 +118,18 @@ class WebApp:
                 pass
         return True
 
-    # Serve the static HTML UI
+    # Load the main game page
     def home(self):
         with open("Wk0_A2_coPlay.html", "r", encoding="utf-8") as f:
             return f.read()
 
-    # Broadcast new message to all peers via Zookeeper
+    # Post a new chat message to Zookeeper
     def message_post(self):
         text = base64.b64decode(request.data).decode('utf-8')
         zk.create(f"{MESSAGE_PATH}/msg-", value=json.dumps({"message": text}).encode(), sequence=True)
         return "ok"
 
-    # Handle tower click or reset logic
+    # Handle tower click or reset commands
     def tower_get(self):
         global reset_triggered, reset_requester_id
         tower = request.args.get("tower")
@@ -141,13 +146,13 @@ class WebApp:
             zk.create(f"{TOWER_PATH}/tower-", value=json.dumps({"tower": int(tower)}).encode(), sequence=True)
         return "ok"
 
-    # Delayed reset broadcast after vote
+    # Broadcast reset command after a small delay
     def delayed_reset(self):
         global reset_triggered
         zk.create(f"{TOWER_PATH}/tower-", value=json.dumps({"reset": True}).encode(), sequence=True)
         reset_triggered = False
 
-    # Update disk count setting
+    # Update the number of disks used in game
     def disk_get(self):
         try:
             count = int(request.args.get("count"))
@@ -156,57 +161,98 @@ class WebApp:
         except:
             return "Invalid count", 400
 
-    # Called by browser to fetch new updates
+    # Return new updates to the browser or test
     def update(self):
         with self.update_lock:
             data = list(self.updates)
             self.updates.clear()
             return json.dumps(data)
 
-    # Shutdown this peer (broadcast + delayed exit)
+    # Trigger shutdown and return to Home link
     def shutdown(self):
         zk.create(f"{MESSAGE_PATH}/msg-", value=json.dumps({"shutdown": "shutdown"}).encode(), sequence=True)
         threading.Timer(1.0, self.do_shutdown).start()
         return "<a href='/'>Home</a>"
 
-    # Terminate the Flask process
+    # Kill the process
     def do_shutdown(self):
         os.kill(os.getpid(), signal.SIGINT)
 
-# Start each peer in a separate thread
-def run_peer(port, peer_id):
-    WebApp(port, peer_id)
-
+# Launch each peer node
+threads = []
 for i, port in enumerate(PORTS):
-    threading.Thread(target=run_peer, args=(port, f"peer{i+1}"), daemon=(i > 0)).start()
+    t = threading.Thread(target=lambda: WebApp(port, f"peer{i+1}"), daemon=(i > 0))
+    t.start()
+    threads.append(t)
 
-# Optional test function for crash-resilient message passing
-def test_fault_tolerance():
-    print("Running fault tolerance test")
-    def post_msg(peer, text):
-        encoded = base64.b64encode(text.encode()).decode()
-        requests.post(f"{BASE_URLS[peer]}/message", data=encoded)
+# Helper to send base64 encoded messages
+def post_msg(peer, text):
+    encoded = base64.b64encode(text.encode()).decode()
+    r = requests.post(f"{BASE_URLS[peer]}/message", data=encoded)
+    print(f"Sent to Peer{peer+1}: '{text}' | Status: {r.status_code}")
 
-    def get_updates(peer):
-        res = requests.get(f"{BASE_URLS[peer]}/update").json()
-        print(f"Peer{peer+1} updates:", res)
-        return res
+# Helper to retrieve updates
+def get_updates(peer):
+    try:
+        res = requests.get(f"{BASE_URLS[peer]}/update")
+        data = res.json()
+        print(f"Updates from Peer{peer+1}: {data}")
+        return data
+    except Exception as e:
+        print(f"Failed to get updates from Peer{peer+1}: {e}")
+        return []
 
-    def crash_peer(peer):
-        try:
-            requests.get(f"{BASE_URLS[peer]}/shutdown")
-        except:
-            print(f"Peer{peer+1} crashed.")
+# Helper to simulate a peer crash
+def crash_peer(peer):
+    try:
+        requests.get(f"{BASE_URLS[peer]}/shutdown")
+        print(f"Shutdown signal sent to Peer{peer+1}")
+    except:
+        print(f"Peer{peer+1} is unreachable or already shut down")
 
-    post_msg(0, "Pre-crash")
+# Test crash during broadcast
+def test_crash():
+    print("\nRunning test_crash...")
+    post_msg(0, "before crash")
+    time.sleep(1)
     crash_peer(2)
-    time.sleep(1)
-    post_msg(1, "After crash")
-    time.sleep(1)
+    post_msg(1, "after crash")
+    time.sleep(2)
     updates = get_updates(0)
-    print("Final update:", updates)
+    if any("after crash" in u.get("message", "") for u in updates):
+        print("PASS: Message after crash received")
+    else:
+        print("FAIL: Message after crash not found")
 
-# Testing in console if its True
+# Test sending messages in order
+def test_message_order():
+    print("\nRunning test_message_order...")
+    msgs = ["One", "Two", "Three"]
+    for msg in msgs:
+        post_msg(1, msg)
+        time.sleep(0.5)
+    updates = get_updates(0)
+    received = [u["message"] for u in updates if "message" in u]
+    if all(m in received for m in msgs):
+        print("PASS: All ordered messages received")
+    else:
+        print("FAIL: Message(s) missing")
+
+# Test delayed message arrival
+def test_lag():
+    print("\nRunning test_lag...")
+    post_msg(0, "lag test")
+    time.sleep(3)
+    updates = get_updates(1)
+    if any("lag test" in u.get("message", "") for u in updates):
+        print("PASS: Lagged message received")
+    else:
+        print("FAIL: Lagged message missing")
+
+# Run all tests if testing mode is enabled
 if TESTING:
     time.sleep(2)
-    test_fault_tolerance()
+    test_message_order()
+    test_lag()
+    test_crash()
+    print("\nAll tests finished.")
