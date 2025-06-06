@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.INFO)
 logging.getLogger('werkzeug').disabled = True
 
 # Toggle this to True for testing via console instead of browser
-TESTING = True
+TESTING = False
 
 # List of ports for peer nodes
 PORTS = [5000, 5002, 5004]
@@ -92,6 +92,8 @@ class WebApp:
                 with self.update_lock:
                     self.updates.append(msg)
                 self.last_seen_msg = idx
+                # Print message update to console
+                print(f"[MessageWatcher] New message received on {self.peer_id}: {msg}")
 
     # Callback to track tower actions
     def tower_watcher(self, children):
@@ -106,6 +108,8 @@ class WebApp:
                 with self.update_lock:
                     self.updates.append(tower_event)
                 self.last_seen_tower = idx
+                # Print tower update to console
+                print(f"[TowerWatcher] New tower event on {self.peer_id}: {tower_event}")
 
     # Callback to track disk number updates
     def disk_watcher(self, data, stat):
@@ -114,6 +118,8 @@ class WebApp:
                 disk_count = int(data.decode())
                 with self.update_lock:
                     self.updates.append({"disk_number": disk_count})
+                # Print disk change to console
+                print(f"[DiskWatcher] Disk count changed on {self.peer_id}: {disk_count}")
             except:
                 pass
         return True
